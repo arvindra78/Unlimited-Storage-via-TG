@@ -95,13 +95,13 @@ def upload():
 @login_required
 def download_file(file_id):
     """
-    Download route with proper context separation.
+    High-performance download route with IDM support.
     
-    CRITICAL PATTERN:
-    1. Get database connection WITHIN request context
-    2. Fetch ALL data needed for streaming
-    3. Pass ONLY plain Python data to generator
-    4. Generator runs OUTSIDE request context
+    OPTIMIZATIONS:
+    1. Parallel chunk prefetching (3-4 chunks ahead)
+    2. Proper headers for download managers
+    3. Streaming transfer without buffering
+    4. Connection keep-alive hints
     """
     try:
         # Step 1: Get DB connection (within Flask request context)
@@ -117,18 +117,34 @@ def download_file(file_id):
         if 'error' in download_data:
             return download_data['error'], download_data['code']
         
-        # Step 4: Create response with generator
-        # The generator receives ONLY plain data (no Flask globals)
-        return Response(
+        # Step 4: Create optimized response
+        response = Response(
             downloader.create_download_stream(download_data),
             mimetype='application/octet-stream',
             headers={
-                "Content-Disposition": f"attachment; filename={download_data['filename']}",
+                # File metadata
+                "Content-Disposition": f"attachment; filename=\"{download_data['filename']}\"",
                 "Content-Length": str(download_data['size']),
-                "Accept-Ranges": "none",  # Indicate no range support (for now)
-                "Cache-Control": "no-cache"
+                
+                # Download manager optimization
+                "Accept-Ranges": "none",  # Linear streaming (no range support yet)
+                "X-Content-Type-Options": "nosniff",
+                
+                # Caching & connection
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+                
+                # Streaming hints
+                "X-Accel-Buffering": "no",  # Disable nginx buffering if behind proxy
             }
         )
+        
+        # Disable Flask buffering for true streaming
+        response.direct_passthrough = True
+        
+        return response
+        
     except Exception as e:
         print(f"[DownloadRoute] Error: {e}")
         return f"Download Error: {str(e)}", 500
