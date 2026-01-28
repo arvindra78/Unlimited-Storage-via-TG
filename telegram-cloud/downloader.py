@@ -10,7 +10,7 @@ PREFETCH_CHUNKS = 2         # Conservative prefetch for true streaming
 MAX_WORKERS = 3             # Reduced workers (true streaming needs less)
 CHUNK_TIMEOUT = 120
 
-def prepare_download_data(file_id, db_connection):
+def prepare_download_data(file_id, db_connection, bot_token, channel_id):
     """
     Fetch all necessary data from the database BEFORE streaming begins.
     This function operates WITHIN the Flask request context.
@@ -36,7 +36,9 @@ def prepare_download_data(file_id, db_connection):
         'size': row['size'],
         'message_ids': message_ids,
         'chunk_hashes': chunk_hashes,
-        'chunks': row['chunks']
+        'chunks': row['chunks'],
+        'bot_token': bot_token,
+        'channel_id': channel_id
     }
 
 
@@ -124,14 +126,16 @@ def create_download_stream(download_data):
     Total: ~10 seconds (50% faster perceived speed)
     
     Args:
-        download_data: Dict with message_ids, chunk_hashes
+        download_data: Dict with message_ids, chunk_hashes, bot_token, channel_id
     
     Yields:
         bytes: 512KB blocks streamed directly from Telegram
     """
     message_ids = download_data['message_ids']
     chunk_hashes = download_data['chunk_hashes']
-    client = TelegramClient()
+    bot_token = download_data['bot_token']
+    channel_id = download_data['channel_id']
+    client = TelegramClient(token=bot_token, channel_id=channel_id)
     
     # Stream each chunk in order
     for i, msg_id in enumerate(message_ids):

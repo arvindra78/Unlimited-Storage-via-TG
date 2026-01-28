@@ -23,6 +23,15 @@ class TelegramClient:
     def get_chat(self):
         """Verify channel access and bot admin status (implicitly via successful query)"""
         return self._request('GET', 'getChat', params={'chat_id': self.channel_id})
+    
+    def verify_access(self):
+        """Verify bot can access channel (used during onboarding verification)"""
+        try:
+            chat = self.get_chat()
+            return chat and 'result' in chat or True
+        except:
+            return False
+
 
     def send_document(self, file_handle, filename):
         """

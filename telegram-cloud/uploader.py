@@ -9,12 +9,14 @@ from telegram_client import TelegramClient
 from db import DB_PATH
 
 class UploadWorker(threading.Thread):
-    def __init__(self, file_id, temp_path, filename):
+    def __init__(self, user_id, file_id, temp_path, filename, bot_token, channel_id):
         threading.Thread.__init__(self)
+        self.user_id = user_id
         self.file_id = file_id
         self.temp_path = temp_path
         self.filename = filename
-        self.client = TelegramClient()
+        self.client = TelegramClient(token=bot_token, channel_id=channel_id)
+
 
     def run(self):
         print(f"[UploadWorker] Starting upload for {self.filename} (ID: {self.file_id})")
@@ -90,6 +92,12 @@ class UploadWorker(threading.Thread):
         except Exception as e:
             print(f"[UploadWorker] Failed upload for {self.filename}: {e}")
             c.execute("UPDATE files SET status='failed' WHERE id=?", (self.file_id,))
+            
+            # Detect 401 Unauthorized or similar token issues
+            if "401" in str(e) or "Unauthorized" in str(e):
+                print(f"[UploadWorker] Detected invalid credentials for user {self.user_id}")
+                c.execute("UPDATE users SET credentials_verified = 0 WHERE id = ?", (self.user_id,))
+            
             conn.commit()
         finally:
             conn.close()
@@ -100,6 +108,7 @@ class UploadWorker(threading.Thread):
                 except Exception as e:
                     print(f"Error removing temp file: {e}")
 
-def start_upload(file_id, temp_path, filename):
-    worker = UploadWorker(file_id, temp_path, filename)
+def start_upload(user_id, file_id, temp_path, filename, bot_token, channel_id):
+    worker = UploadWorker(user_id, file_id, temp_path, filename, bot_token, channel_id)
     worker.start()
+

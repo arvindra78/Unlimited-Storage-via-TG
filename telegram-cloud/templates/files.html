@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Files - TeleCloud{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-cyan-50 to-blue-50 py-8 px-4">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="mb-6">
+            <a href="{{ url_for('dashboard') }}"
+                class="text-ag-cyan-600 hover:text-ag-cyan-700 font-semibold inline-flex items-center gap-2">
+                ← Back to Dashboard
+            </a>
+            <h1 class="text-3xl font-bold text-slate-900 mt-4">All Files</h1>
+            <p class="text-slate-600 mt-1">{{ files|length }} files in your cloud storage</p>
+        </div>
+
+        <!-- Filters & Search -->
+        <div class="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-xl p-4 mb-6">
+            <div class="flex flex-col sm:flex-row gap-4">
+                <!-- Search -->
+                <div class="flex-1">
+                    <input type="text" id="search-input" placeholder="Search files..." class="w-full px-4 py-2 rounded-xl border border-slate-200 bg-white/50 
+                               focus:outline-none focus:ring-2 focus:ring-ag-cyan-500/50" onkeyup="filterFiles()">
+                </div>
+
+                <!-- Status Filter -->
+                <select id="status-filter" onchange="filterByStatus()"
+                    class="px-4 py-2 rounded-xl border border-slate-200 bg-white/50 focus:outline-none focus:ring-2 focus:ring-ag-cyan-500/50">
+                    <option value="">All Files</option>
+                    <option value="completed" {% if request.args.get('status')=='completed' %}selected{% endif %}>
+                        Completed</option>
+                    <option value="uploading" {% if request.args.get('status')=='uploading' %}selected{% endif %}>
+                        Uploading</option>
+                    <option value="failed" {% if request.args.get('status')=='failed' %}selected{% endif %}>Failed
+                    </option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Files List -->
+        <div id="files-container" class="space-y-3">
+            {% if files|length == 0 %}
+            <div class="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-xl p-12 text-center">
+                <div class="text-6xl mb-4">📭</div>
+                <h2 class="text-2xl font-bold text-slate-900 mb-2">No files yet</h2>
+                <p class="text-slate-600 mb-6">Upload your first file to get started</p>
+                <a href="{{ url_for('upload') }}"
+                    class="inline-block bg-gradient-to-r from-ag-cyan-500 via-ag-blue-500 to-ag-violet-500 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all">
+                    Upload File
+                </a>
+            </div>
+            {% else %}
+            {% for file in files %}
+            <div class="file-item bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-xl p-4 hover:shadow-2xl transition-all"
+                data-filename="{{ file.filename|lower }}" data-status="{{ file.status }}">
+                <div class="flex items-center gap-4">
+                    <!-- File Icon -->
+                    <div
+                        class="w-12 h-12 rounded-xl bg-gradient-to-br from-ag-cyan-500 to-blue-500 flex items-center justify-center text-white text-xl flex-shrink-0">
+                        {% if file.filename.endswith(('.jpg', '.jpeg', '.png', '.gif')) %}🖼️
+                        {% elif file.filename.endswith(('.mp4', '.avi', '.mkv', '.mov')) %}🎥
+                        {% elif file.filename.endswith(('.mp3', '.wav', '.flac')) %}🎵
+                        {% elif file.filename.endswith(('.pdf',)) %}📄
+                        {% elif file.filename.endswith(('.zip', '.rar', '.7z')) %}📦
+                        {% else %}📁{% endif %}
+                    </div>
+
+                    <!-- File Info -->
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-slate-900 truncate">{{ file.filename }}</h3>
+                        <div class="flex items-center gap-3 text-sm text-slate-600 mt-1">
+                            <span>{{ (file.size / (1024**2)) | round(2) }} MB</span>
+                            <span>•</span>
+                            <span>{{ file.created_at }}</span>
+                        </div>
+
+                        <!-- Upload Progress -->
+                        {% if file.status == 'uploading' %}
+                        <div class="mt-2">
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-ag-cyan-600">Uploading...</span>
+                                <span class="text-ag-cyan-600">{{ file.uploaded_chunks }}/{{ file.chunks }} chunks</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-ag-cyan-500 to-blue-500 transition-all"
+                                    style="width: {{ (file.uploaded_chunks / file.chunks * 100) if file.chunks > 0 else 0 }}%">
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Status Badge -->
+                    <div class="flex-shrink-0">
+                        {% if file.status == 'completed' %}
+                        <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">✓
+                            Ready</span>
+                        {% elif file.status == 'uploading' %}
+                        <span class="px-3 py-1 bg-ag-blue-100 text-blue-700 rounded-full text-sm font-semibold">⏳
+                            Uploading</span>
+                        {% elif file.status == 'failed' %}
+                        <span class="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm font-semibold">✗
+                            Failed</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex gap-2 flex-shrink-0">
+                        {% if file.status == 'completed' %}
+                        <a href="{{ url_for('download_file', file_id=file.id) }}"
+                            class="px-4 py-2 bg-gradient-to-r from-ag-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:shadow-lg transition-all">
+                            Download
+                        </a>
+                        {% endif %}
+
+                        {% if file.status in ['completed', 'failed'] %}
+                        <button onclick="deleteFile({{ file.id }})"
+                            class="px-4 py-2 bg-red-100 text-red-700 font-semibold rounded-xl hover:bg-red-200 transition-all">
+                            Delete
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+
+        <!-- Empty State (hidden by default, shown by search filter) -->
+        <div id="no-results"
+            class="hidden bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-xl p-12 text-center">
+            <div class="text-6xl mb-4">🔍</div>
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">No files found</h2>
+            <p class="text-slate-600">Try adjusting your search or filters</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    function filterFiles() {
+        const searchTerm = document.getElementById('search-input').value.toLowerCase();
+        const fileItems = document.querySelectorAll('.file-item');
+        let visibleCount = 0;
+
+        fileItems.forEach(item => {
+            const filename = item.getAttribute('data-filename');
+            if (filename.includes(searchTerm)) {
+                item.style.display = 'block';
+                visibleCount++;
+            } else {
+                item.style.display = 'none';
+            }
+        });
+
+        document.getElementById('no-results').classList.toggle('hidden', visibleCount > 0);
+    }
+
+    function filterByStatus() {
+        const status = document.getElementById('status-filter').value;
+        if (status) {
+            window.location.href = `{{ url_for('files') }}?status=${status}`;
+        } else {
+            window.location.href = `{{ url_for('files') }}`;
+        }
+    }
+
+    async function deleteFile(fileId) {
+        if (!confirm('Delete this file? This cannot be undone.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/files/${fileId}/delete`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                showToast('File deleted successfully', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                const data = await response.json();
+                throw new Error(data.error || 'Delete failed');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+    }
+
+    function showToast(message, type) {
+        const toast = document.createElement('div');
+        toast.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-xl ${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white shadow-lg animate-fade-in`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.remove();
+        }, 3000);
+    }
+</script>
+{% endblock %}

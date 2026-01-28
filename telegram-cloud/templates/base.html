@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TeleCloud{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+</head>
+
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-cyan-50 to-blue-50">
+
+    <!-- System Message Banner -->
+    {% if system_message %}
+    <div
+        class="sticky top-0 z-50 {% if system_message.severity == 'critical' %}bg-red-50 border-red-200 text-red-700{% elif system_message.severity == 'warning' %}bg-amber-50 border-amber-200 text-amber-700{% else %}bg-ag-blue-50 border-blue-200 text-blue-700{% endif %} border-b px-4 py-3">
+        <div class="flex items-center justify-between max-w-4xl mx-auto">
+            <div class="flex items-center gap-3">
+                <span class="text-xl">{% if system_message.severity == 'critical' %}🔴{% elif system_message.severity ==
+                    'warning' %}🟡{% else %}🔵{% endif %}</span>
+                <div>
+                    <p class="font-semibold">{{ system_message.title }}</p>
+                    <p class="text-sm">{{ system_message.body }}</p>
+                </div>
+            </div>
+            {% if system_message.dismissable %}
+            <button onclick="dismissMessage()" class="text-current hover:opacity-70">×</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Flash Messages -->
+    <div id="flash-messages" class="fixed top-4 right-4 z-50 space-y-2">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="flash-message px-6 py-3 rounded-xl {% if category == 'error' %}bg-red-500{% elif category == 'success' %}bg-green-500{% else %}bg-ag-blue-500{% endif %} text-white shadow-lg 
+                            backdrop-blur-xl transform transition-all duration-300 
+                            animate-fade-in">
+            {{ message }}
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+    </div>
+
+    {% block content %}{% endblock %}
+
+    {% block scripts %}
+    <script src="{{ url_for('static', filename='js/core.js') }}"></script>
+    {% endblock %}
+</body>
+
+</html>

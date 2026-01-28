@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Telegram Settings - TeleCloud{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-cyan-50 to-blue-50 py-8 px-4">
+    <div class="max-w-2xl mx-auto">
+        <!-- Header -->
+        <div class="mb-6">
+            <a href="{{ url_for('settings') }}"
+                class="text-ag-cyan-600 hover:text-ag-cyan-700 font-semibold inline-flex items-center gap-2">
+                ← Back to Settings
+            </a>
+            <h1 class="text-3xl font-bold text-slate-900 mt-4">Telegram Settings</h1>
+            <p class="text-slate-600 mt-1">Manage your storage connection</p>
+        </div>
+
+        <!-- Connection Status Card -->
+        <div class="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-xl p-6 mb-6">
+            <h2 class="text-lg font-semibold text-slate-900 mb-4">Connection Status</h2>
+
+            {% if verified %}
+            <div class="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+                <div class="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white">✓</div>
+                <div>
+                    <p class="font-semibold text-green-900">Connected</p>
+                    <p class="text-sm text-green-700">Last verified: {{ verified_at or 'Recently' }}</p>
+                </div>
+            </div>
+
+            <button onclick="reverifyConnection()" id="reverify-btn"
+                class="mt-4 w-full bg-slate-100 text-slate-700 font-semibold px-6 py-3 rounded-xl hover:bg-slate-200 transition-all">
+                Re-verify Connection
+            </button>
+            {% else %}
+            <div class="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <div class="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center text-white">✗</div>
+                <div>
+                    <p class="font-semibold text-red-900">Connection Failed</p>
+                    <p class="text-sm text-red-700">Your bot token may have been revoked</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Credentials Card -->
+        <div class="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-xl p-6 mb-6">
+            <h2 class="text-lg font-semibold text-slate-900 mb-4">Credentials</h2>
+
+            <div class="space-y-4">
+                <!-- Bot Token -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Bot Token</label>
+                    <div class="flex gap-2">
+                        <input type="password" id="token-display" value="{{ masked_token or 'Not set' }}" readonly
+                            class="flex-1 px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 
+                                   font-mono text-sm">
+                        <button onclick="toggleTokenVisibility()"
+                            class="px-4 py-3 bg-slate-100 rounded-xl hover:bg-slate-200 transition-all">
+                            👁️
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Channel ID -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Channel ID</label>
+                    <input type="text" value="{{ channel_id or 'Not set' }}" readonly class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 
+                               font-mono text-sm">
+                </div>
+            </div>
+
+            <button onclick="showUpdateForm()"
+                class="mt-4 w-full bg-gradient-to-r from-ag-cyan-500 via-ag-blue-500 to-ag-violet-500 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all">
+                Update Credentials
+            </button>
+        </div>
+
+        <!-- Privacy Notice -->
+        <div class="bg-ag-blue-50 border border-blue-200 rounded-xl p-4">
+            <h3 class="font-semibold text-ag-blue-900 mb-2">🔒 Privacy Notice</h3>
+            <ul class="text-sm text-ag-blue-800 space-y-1">
+                <li>• Your bot token is encrypted at rest</li>
+                <li>• We never store your files on our servers</li>
+                <li>• Files stream directly from Telegram to you</li>
+                <li>• You can revoke access anytime</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Update Modal -->
+<div id="update-modal"
+    class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full">
+        <h2 class="text-2xl font-bold text-slate-900 mb-4">Update Credentials</h2>
+
+        <form id="update-form" class="space-y-4">
+            <div>
+                <label for="new_bot_token" class="block text-sm font-medium text-slate-700 mb-2">New Bot Token</label>
+                <input type="text" id="new_bot_token" name="bot_token" required class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white 
+                           focus:outline-none focus:ring-2 focus:ring-ag-cyan-500/50
+                           font-mono text-sm" placeholder="1234567890:ABCdef...">
+            </div>
+
+            <div>
+                <label for="new_channel_id" class="block text-sm font-medium text-slate-700 mb-2">Channel ID
+                    (optional)</label>
+                <input type="text" id="new_channel_id" name="channel_id" value="{{ channel_id or '' }}" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white 
+                           focus:outline-none focus:ring-2 focus:ring-ag-cyan-500/50
+                           font-mono text-sm" placeholder="-100123456789">
+                <p class="text-xs text-slate-500 mt-1">Leave empty to keep current channel</p>
+            </div>
+
+            <div id="update-error" class="hidden bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+            </div>
+
+            <div class="flex gap-3">
+                <button type="button" onclick="hideUpdateForm()"
+                    class="flex-1 bg-slate-200 text-slate-700 font-semibold px-6 py-3 rounded-xl hover:bg-slate-300 transition-all">
+                    Cancel
+                </button>
+                <button type="submit" id="update-btn"
+                    class="flex-1 bg-gradient-to-r from-ag-cyan-500 via-ag-blue-500 to-ag-violet-500 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all">
+                    Verify & Update
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function showUpdateForm() {
+        document.getElementById('update-modal').classList.remove('hidden');
+    }
+
+    function hideUpdateForm() {
+        document.getElementById('update-modal').classList.add('hidden');
+        document.getElementById('update-error').classList.add('hidden');
+    }
+
+    function toggleTokenVisibility() {
+        const input = document.getElementById('token-display');
+        input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    async function reverifyConnection() {
+        const btn = document.getElementById('reverify-btn');
+        btn.disabled = true;
+        btn.textContent = 'Verifying...';
+
+        try {
+            const response = await fetch('{{ url_for("settings_telegram_verify") }}', {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showToast('Connection verified successfully', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                throw new Error(data.error || 'Verification failed');
+            }
+        } catch (error) {
+            showToast(error.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Re-verify Connection';
+        }
+    }
+
+    document.getElementById('update-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const btn = document.getElementById('update-btn');
+        const errorDiv = document.getElementById('update-error');
+
+        btn.disabled = true;
+        btn.textContent = 'Verifying...';
+        errorDiv.classList.add('hidden');
+
+        try {
+            const formData = new FormData(e.target);
+
+            const response = await fetch('{{ url_for("settings_telegram_update") }}', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showToast('Credentials updated successfully', 'success');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                throw new Error(data.error || 'Update failed');
+            }
+        } catch (error) {
+            errorDiv.textContent = error.message;
+            errorDiv.classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = 'Verify & Update';
+        }
+    });
+</script>
+{% endblock %}

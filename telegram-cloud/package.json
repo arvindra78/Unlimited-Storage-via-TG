@@ -1,0 +1,11 @@
+{
+  "name": "telegram-cloud",
+  "version": "1.0.0",
+  "scripts": {
+    "build:css": "tailwindcss -i ./static/css/input.css -o ./static/css/app.css --watch",
+    "build:css:prod": "tailwindcss -i ./static/css/input.css -o ./static/css/app.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
+  }
+}
