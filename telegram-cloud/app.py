@@ -185,68 +185,86 @@ def upload():
         limits = get_user_limits_status(g.user_id)
         return render_template('upload.html', limits=limits)
     
-    # POST: Handle file upload
+    # POST: Handle file upload (supports single or multiple files)
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
+
+    files = request.files.getlist('file')
+    # Filter out empty filenames
+    files = [f for f in files if f and f.filename]
+
+    if not files:
         return jsonify({'error': 'No selected file'}), 400
 
-    # Check rate limits
-    can_upload, current_count, resets_in = check_daily_upload_limit(g.user_id)
-    if not can_upload:
-        return jsonify({
-            'error': 'Daily upload limit reached',
-            'message': f'You have uploaded {current_count}/20 files today. Limit resets in {resets_in} hours.'
-        }), 429
-    
-    # Check file size
-    file.seek(0, os.SEEK_END)
-    file_size = file.tell()
-    file.seek(0)
-    
-    within_limit, size_mb = check_file_size_limit(file_size)
-    if not within_limit:
-        return jsonify({
-            'error': 'File too large',
-            'message': f'File is {size_mb:.1f} MB. Free plan allows max 100 MB per file.'
-        }), 400
+    created_file_ids = []
 
-    filename = secure_filename(file.filename)
-    if not filename:
-        filename = "unnamed_file"
-
-    # Save to temp
-    temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{g.user_id}_{filename}")
-    file.save(temp_path)
-
-    # Create DB Entry with user_id
-    db = get_db()
-    cursor = db.execute('''
-        INSERT INTO files (user_id, filename, size, chunks, status, message_ids, chunk_hashes) 
-        VALUES (?, ?, ?, 0, 'uploading', '[]', '[]')
-    ''', (g.user_id, filename, file_size))
-    db.commit()
-    file_id = cursor.lastrowid
-
-    # Get user's decrypted bot token
+    # Get user's decrypted bot token once
     encrypted_token = g.user.get('bot_token_encrypted')
     bot_token = decrypt_bot_token(encrypted_token)
     channel_id = g.user.get('channel_id')
 
-    # Start Background Upload (threaded)
-    try:
-        start_upload(g.user_id, file_id, temp_path, filename, bot_token, channel_id)
-    except Exception as e:
-        # If upload start fails, mark credentials as broken
-        mark_credentials_verified(g.user_id, verified=False)
-        return jsonify({
-            'error': 'Telegram connection failed',
-            'message': 'Could not start upload. Your credentials may be invalid.'
-        }), 500
+    for file in files:
+        # Check rate limits per file
+        can_upload, current_count, resets_in = check_daily_upload_limit(g.user_id)
+        if not can_upload:
+            # If we've already started some uploads, return partial success
+            if created_file_ids:
+                return jsonify({
+                    'error': 'Daily upload limit reached',
+                    'message': f'You have uploaded {current_count}/20 files today. Limit resets in {resets_in} hours.',
+                    'file_ids': created_file_ids
+                }), 429
+            return jsonify({
+                'error': 'Daily upload limit reached',
+                'message': f'You have uploaded {current_count}/20 files today. Limit resets in {resets_in} hours.'
+            }), 429
 
-    return jsonify({'success': True, 'file_id': file_id})
+        # Check file size
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+
+        within_limit, size_mb = check_file_size_limit(file_size)
+        if not within_limit:
+            return jsonify({
+                'error': 'File too large',
+                'message': f'File is {size_mb:.1f} MB. Free plan allows max 100 MB per file.'
+            }), 400
+
+        filename = secure_filename(file.filename)
+        if not filename:
+            filename = "unnamed_file"
+
+        # Save to temp
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{g.user_id}_{filename}")
+        file.save(temp_path)
+
+        # Create DB Entry with user_id
+        db = get_db()
+        cursor = db.execute('''
+            INSERT INTO files (user_id, filename, size, chunks, status, message_ids, chunk_hashes) 
+            VALUES (?, ?, ?, 0, 'uploading', '[]', '[]')
+        ''', (g.user_id, filename, file_size))
+        db.commit()
+        file_id = cursor.lastrowid
+        created_file_ids.append(file_id)
+
+        # Start Background Upload (threaded)
+        try:
+            start_upload(g.user_id, file_id, temp_path, filename, bot_token, channel_id)
+        except Exception as e:
+            # If upload start fails, mark credentials as broken
+            mark_credentials_verified(g.user_id, verified=False)
+            return jsonify({
+                'error': 'Telegram connection failed',
+                'message': 'Could not start upload. Your credentials may be invalid.'
+            }), 500
+
+    # For single-file uploads, keep previous API shape
+    if len(created_file_ids) == 1:
+        return jsonify({'success': True, 'file_id': created_file_ids[0]})
+
+    return jsonify({'success': True, 'file_ids': created_file_ids})
 
 @app.route('/files')
 @login_required

@@ -12,7 +12,7 @@
                 ← Back to Dashboard
             </a>
             <h1 class="text-3xl font-bold text-slate-900 mt-4">Upload Files</h1>
-            <p class="text-slate-600 mt-1">Upload files to your private Telegram cloud</p>
+            <p class="text-slate-600 mt-1">Upload single files, multiple files, or entire folders to your private Telegram cloud</p>
         </div>
 
         <!-- Rate Limit Status -->
@@ -55,18 +55,32 @@
 
         <!-- Upload Card -->
         <div class="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-xl p-8 mb-6">
+            <!-- Hidden configuration for JS -->
+            <div id="js-config" class="hidden" data-max-size-mb="{{ limits.file_size_limit_mb }}"
+                data-upload-url="{{ url_for('upload') }}"
+                data-status-url-template="{{ url_for('check_status', file_id=0) }}">
+            </div>
+
             <form id="upload-form" enctype="multipart/form-data">
                 <!-- Drop Zone -->
                 <div id="drop-zone"
                     class="border-2 border-dashed border-slate-300 rounded-2xl p-12 text-center hover:border-ag-cyan-500 transition-all cursor-pointer">
-                    <input type="file" id="file-input" name="file" class="hidden" {% if not
+                    <!-- File picker (files only) -->
+                    <input type="file" id="file-input" name="file" class="hidden" multiple {% if not
+                        limits.daily_uploads.can_upload %}disabled{% endif %}>
+                    <!-- Folder picker (entire folders) -->
+                    <input type="file" id="folder-input" name="file" class="hidden" webkitdirectory mozdirectory {% if not
                         limits.daily_uploads.can_upload %}disabled{% endif %}>
 
                     <div id="drop-instructions">
                         <div class="text-6xl mb-4">📁</div>
-                        <h3 class="text-xl font-semibold text-slate-900 mb-2">Choose or Drop File</h3>
-                        <p class="text-slate-600 mb-4">Click to browse or drag and drop a file here</p>
-                        <p class="text-sm text-slate-500">Maximum file size: {{ limits.file_size_limit_mb }} MB</p>
+                        <h3 class="text-xl font-semibold text-slate-900 mb-2">Choose or Drop Files / Folder</h3>
+                        <p class="text-slate-600 mb-2">Click to browse files or drag and drop here</p>
+                        <button type="button" id="folder-btn"
+                            class="inline-flex items-center px-3 py-1.5 mb-2 text-sm font-semibold text-ag-cyan-700 bg-ag-cyan-50 border border-ag-cyan-100 rounded-full hover:bg-ag-cyan-100">
+                            Or choose a folder
+                        </button>
+                        <p class="text-sm text-slate-500">Maximum file size: {{ limits.file_size_limit_mb }} MB per file</p>
                     </div>
 
                     <div id="file-selected" class="hidden">
@@ -92,7 +106,7 @@
             <div id="upload-progress" class="hidden mt-6">
                 <div class="mb-2">
                     <div class="flex justify-between text-sm mb-2">
-                        <span class="text-slate-600">Uploading...</span>
+                        <span class="text-slate-600" id="progress-label">Uploading...</span>
                         <span class="font-semibold text-ag-cyan-600" id="progress-text">0%</span>
                     </div>
                     <div class="w-full h-3 bg-slate-200 rounded-full overflow-hidden">
@@ -133,13 +147,18 @@
 <script>
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
+    const folderInput = document.getElementById('folder-input');
     const uploadForm = document.getElementById('upload-form');
     const uploadBtn = document.getElementById('upload-btn');
     const uploadProgress = document.getElementById('upload-progress');
     const errorDiv = document.getElementById('error-message');
     const successDiv = document.getElementById('success-message');
+    const config = document.getElementById('js-config').dataset;
+    const progressLabel = document.getElementById('progress-label');
+    const uploadStatus = document.getElementById('upload-status');
+    const folderBtn = document.getElementById('folder-btn');
 
-    let selectedFile = null;
+    let selectedFiles = [];
 
     // Initialize individual progress bars
     document.querySelectorAll('.progress-bar').forEach(bar => {
@@ -148,13 +167,26 @@
 
     document.getElementById('clear-file-btn').addEventListener('click', clearFile);
 
-    // Click to upload
+    // Click to upload (files)
     dropZone.addEventListener('click', () => fileInput.click());
 
-    // File selected
+    // Choose folder button
+    folderBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        folderInput.click();
+    });
+
+    // File(s) selected
     fileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
-            handleFileSelect(e.target.files[0]);
+            handleFileSelect(Array.from(e.target.files));
+        }
+    });
+
+    // Folder selected (files from folder)
+    folderInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelect(Array.from(e.target.files));
         }
     });
 
@@ -173,33 +205,43 @@
         dropZone.classList.remove('border-ag-cyan-500', 'bg-ag-cyan-50');
 
         if (e.dataTransfer.files.length > 0) {
-            handleFileSelect(e.dataTransfer.files[0]);
+            handleFileSelect(Array.from(e.dataTransfer.files));
         }
     });
 
-    function handleFileSelect(file) {
-        selectedFile = file;
+    function handleFileSelect(files) {
+        selectedFiles = files;
 
-        // Show file info
+        const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+        const maxSize = parseInt(config.maxSizeMb) * 1024 * 1024;
+
+        // Show files info
         document.getElementById('drop-instructions').classList.add('hidden');
         document.getElementById('file-selected').classList.remove('hidden');
-        document.getElementById('selected-filename').textContent = file.name;
-        document.getElementById('selected-filesize').textContent = formatBytes(file.size);
 
-        // Check size limit
-        const maxSize = {{ limits.file_size_limit_mb }} * 1024 * 1024;
-    if (file.size > maxSize) {
-        showError(`File too large. Maximum size is {{ limits.file_size_limit_mb }} MB.`);
-        uploadBtn.disabled = true;
-    } else {
-        uploadBtn.disabled = false;
-        errorDiv.classList.add('hidden');
-    }
+        if (files.length === 1) {
+            document.getElementById('selected-filename').textContent = files[0].name;
+            document.getElementById('selected-filesize').textContent = formatBytes(files[0].size);
+        } else {
+            document.getElementById('selected-filename').textContent = `${files.length} items selected`;
+            document.getElementById('selected-filesize').textContent = `${formatBytes(totalSize)} total`;
+        }
+
+        // Check per-file size limit
+        const tooLarge = files.find(f => f.size > maxSize);
+        if (tooLarge) {
+            showError(`"${tooLarge.name}" is too large. Maximum size per file is ${config.maxSizeMb} MB.`);
+            uploadBtn.disabled = true;
+        } else {
+            uploadBtn.disabled = false;
+            errorDiv.classList.add('hidden');
+        }
     }
 
     function clearFile() {
-        selectedFile = null;
+        selectedFiles = [];
         fileInput.value = '';
+        folderInput.value = '';
         document.getElementById('drop-instructions').classList.remove('hidden');
         document.getElementById('file-selected').classList.add('hidden');
         errorDiv.classList.add('hidden');
@@ -223,8 +265,8 @@
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        if (!selectedFile) {
-            showError('Please select a file first');
+        if (!selectedFiles || selectedFiles.length === 0) {
+            showError('Please select at least one file or folder first');
             return;
         }
 
@@ -233,34 +275,72 @@
         uploadProgress.classList.remove('hidden');
         uploadBtn.disabled = true;
 
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-
-        try {
-            const response = await fetch('{{ url_for("upload") }}', {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                const fileId = data.file_id;
-                // Poll for status
-                pollUploadStatus(fileId);
-            } else {
-                throw new Error(data.message || data.error || 'Upload failed');
-            }
-        } catch (error) {
-            uploadProgress.classList.add('hidden');
-            showError(error.message);
-            uploadBtn.disabled = false;
-        }
+        // Start sequential uploads
+        startSequentialUploads();
     });
 
-    async function pollUploadStatus(fileId) {
+    async function startSequentialUploads() {
+        let currentIndex = 0;
+        const totalFiles = selectedFiles.length;
+
+        const uploadSingle = async () => {
+            if (currentIndex >= totalFiles) {
+                // All done
+                uploadProgress.classList.add('hidden');
+                successDiv.classList.remove('hidden');
+                uploadBtn.disabled = false;
+                document.getElementById('upload-status').textContent = 'All uploads completed.';
+                clearFile();
+                return;
+            }
+
+            const file = selectedFiles[currentIndex];
+            progressLabel.textContent = `Uploading file ${currentIndex + 1} of ${totalFiles}...`;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            // Include relative path when uploading folders (best-effort; server may ignore)
+            if (file.webkitRelativePath) {
+                formData.append('relative_path', file.webkitRelativePath);
+            }
+
+            try {
+                const response = await fetch(config.uploadUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const fileId = data.file_id;
+                    // Poll for status, then move to next file when done
+                    pollUploadStatus(fileId, () => {
+                        currentIndex += 1;
+                        uploadSingle();
+                    });
+                } else {
+                    throw new Error(data.message || data.error || 'Upload failed');
+                }
+            } catch (error) {
+                uploadProgress.classList.add('hidden');
+                showError(error.message);
+                uploadBtn.disabled = false;
+            }
+        };
+
+        // Ensure progress UI visible and reset
+        document.getElementById('progress-bar').style.width = '0%';
+        document.getElementById('progress-text').textContent = '0%';
+        uploadProgress.classList.remove('hidden');
+        uploadStatus.textContent = 'Preparing upload...';
+
+        uploadSingle();
+    }
+
+    async function pollUploadStatus(fileId, onComplete) {
         try {
-            const response = await fetch(`{{ url_for('check_status', file_id=0) }}`.replace('/0', `/${fileId}`));
+            const response = await fetch(config.statusUrlTemplate.replace('0', fileId));
             const data = await response.json();
 
             if (data.status === 'uploading') {
@@ -270,13 +350,17 @@
                 document.getElementById('upload-status').textContent = `Uploading chunk ${data.uploaded} of ${data.total}...`;
 
                 // Continue polling
-                setTimeout(() => pollUploadStatus(fileId), 2000);
+                setTimeout(() => pollUploadStatus(fileId, onComplete), 2000);
             } else if (data.status === 'completed') {
                 document.getElementById('progress-bar').style.width = '100%';
                 document.getElementById('progress-text').textContent = '100%';
-                uploadProgress.classList.add('hidden');
-                successDiv.classList.remove('hidden');
-                clearFile();
+                if (typeof onComplete === 'function') {
+                    onComplete();
+                } else {
+                    uploadProgress.classList.add('hidden');
+                    successDiv.classList.remove('hidden');
+                    clearFile();
+                }
             } else if (data.status === 'failed') {
                 uploadProgress.classList.add('hidden');
                 showError('Upload failed. Please try again.');
@@ -284,7 +368,7 @@
             }
         } catch (error) {
             console.error('Status check error:', error);
-            setTimeout(() => pollUploadStatus(fileId), 2000);
+            setTimeout(() => pollUploadStatus(fileId, onComplete), 2000);
         }
     }
 </script>
