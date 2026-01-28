@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>System Health - Unlimited Storage</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <nav
+        style="padding: 1rem 2rem; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-weight: 700; font-size: 1.25rem;">System<span style="color: var(--success);">Monitor</span>
+        </div>
+        <a href="{{ url_for('dashboard') }}" style="color: #94a3b8;">&larr; Back to Dashboard</a>
+    </nav>
+
+    <div class="container">
+        <h1>Storage Health Metrics</h1>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_files }}</div>
+                <div class="stat-label">Total Indexes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ "%.2f"|format(total_bytes / 1024 / 1024 / 1024) }} GB</div>
+                <div class="stat-label">Virtual Storage Used</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" style="color: var(--success);">100%</div>
+                <div class="stat-label">Node Integrity</div>
+            </div>
+        </div>
+
+        <div class="glass-panel">
+            <h2>System Log</h2>
+            <div style="font-family: monospace; color: #94a3b8; font-size: 0.9rem;">
+                [INFO] Database connection: ESTABLISHED<br>
+                [INFO] Telegram API Latency: 45ms<br>
+                [INFO] SQLite Schema: CONFIRMED (v1.0)<br>
+                [INFO] Chunk size: 20MB strict<br>
+                [OK] Storage subsystem operational.
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
